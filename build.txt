@@ -1,0 +1,406 @@
+============================================================================
+		      Wang 2200 emulator build notes, v3.0
+                               November 29, 2019
+============================================================================
+
+The typical user of wangmu has no need to know any of this. However, if you
+are curious and want to add a feature to the emulator or fix a bug, this
+document will attempt to help you set up an environment on either Windows or
+OSX and build the emulator as it is released. It is a rough guide, and not
+an explicit mouse-click-by-mouse-click cookbook.
+
+The code makes extensive use of C++11 language features. It also uses one
+C++14 feature, std::make_unique. If you have a c++11 compiler and C++14
+isn't an option, it would be possible to declare the std::make_unique
+template in w2200.h (which is visible in every .cpp file). This version
+comes from Herb Sutter:
+
+    https://herbsutter.com/gotw/_102/
+
+    template<typename T, typename ...Args>
+    std::unique_ptr<T> make_unique( Args&& ...args )
+    {
+        return std::unique_ptr<T>( new T( std::forward<Args>(args)... ) );
+    }
+
+--------------------------------------------------------------
+------------------------ Windows Port ------------------------
+--------------------------------------------------------------
+
+1) Set up a modern C++ compiler
+
+   Install Microsoft Visual Studio Community Edition 2017. It is free,
+   it works well, it has a great debugger. I will completely ignore the
+   steps of downloading it and getting it installed.
+
+   Other compilers may work just fine, but Visual Studio Community 2017
+   is what I use, and I know it works for this project.
+
+2) Get the wxWidgets library source code
+
+   Version 3.0 of WangEmu was built using wx version 3.1.3. If you download
+   a later version of wxWidgets, there may be issues, as the wx developers
+   do tend to make a few backward-incompatible changes each release.
+
+   Go to http://www.wxwidgets.org/downloads/ and grab the wxMSW installer.
+
+3) Unpack the wxWidgets source code
+
+   Personally, I override the default install location and instead unpack
+   it into C:\libs\wx-3.1.3 (for release 3.1.3). This isn't strictly
+   necessary, but future examples in this document assumes things were
+   installed into C:\libs\wx-3.1.3. Adjust future comments if you install
+   somewhere else.
+
+4) Tweak setup.h (strictly optional)
+
+   I recommend you skip right to step 5, but if you want to tweak some of
+   the wx build features, like additional malloc debugging, now is the time
+   to do it.
+
+   cd C:\libs\wx-3.1.3\include\wx\msw
+
+   Edit the file "setup.h" to tweak whatever options you need. Only do
+   this if you know your way around wxWidgets. The stock setup.h will
+   work fine.
+
+5) Build the wxWidgets library
+
+   The wxWidgets library may be built many different ways. I'll describe
+   only the way I do it. This worked for MSVC 2017 Community Edition:
+
+   5a) Launch a command line shell from MSVC compiler; make sure you launch
+       the x86 shell, not the x64 shell, as the emulator is configured to
+       be a 32b app, and so the libraries must be 32b as well.  It would
+       certainly be possible to build x64 mode and change the emulator to
+       compile and link in x64 mode as well, but it doesn't benefit from
+       64-bit features, so I targeted 32b so it can run on old 32b versions
+       of windows as well (I hope).
+   5b) type "set WXWIN=c:\libs\wx-3.1.3"  (change to your appropriate path)
+   5c) type "cd %WXWIN\build\msw"
+   5d) type "nmake -f makefile.vc"
+       and wait 10 minutes
+   5e) type "nmake -f makefile.vc BUILD=release"
+       and wait 10 minutes
+   5f) Bonus points if you want to build and run any of the demo or sample
+       applications. Note that most specify linking against a wide range
+       of wx libs, although not all are necessarily needed for a given
+       application. This is worth the effort to gain confidence that the
+       wx libs were built successfully. samples/minimal is the canonical
+       app to try, but demos/bombs is a lot more fun. To build one, cd into
+       the sample or demo directory, and issue the same command as before, eg
+            nmake -f makefile.vc BUILD=release
+       then cd into the vc_mswu/ (or whatever) subdirecotyr and run the .exe
+       located there.
+   5g) Quit the shell.
+
+   If you have difficulties doing this, try visiting the wxWidgets wiki.
+   As of November 2019, the right URL to start is this one:
+
+        https://wiki.wxwidgets.org/Install
+
+6) Set up the build tree
+
+   Unzip the the Wang emulator files to a location of your choosing.
+   For the sake of explantion, let's say you put it in C:\wang2200.
+   You should see the visual express project files:
+
+        wangemu.sln
+        wangemu.vcxproj
+
+   I don't know much about the compiler -- maybe you can hand edit these
+   files to configure it for your own purposes, but I always use the compiler
+   GUI to manipulate the project settings. Very likely you will have
+   installed things on different paths than I did, so some tweaking will
+   be necessary.
+
+   The directory will also contain a subdirectory called "src". This is
+   where the source code (*.h, *.cpp, *.rc, and some miscellaneous image
+   files) live.
+
+   Finally, there are some empty directories that indicate where the
+   binary distribution stick the html, scripts, and disk images.
+
+7) Configure the compiler for the project
+
+   7a) set the shell environment variable WXWIN to point to wherever you
+       installed the wxWidgets library. This should be the path up to the
+       root of that tree. In my case, it is
+            set WXWIN="C:\libs\wx-3.1.3"
+   7b) Fire up the compiler
+   7c) Select File -> Open -> Project/Solution ...
+   7d) You are facing a file dialog box. Navigate over to wangemu.sln,
+       and select it.
+   7e) Select the "Debug" project configuration, then on the Debug menu item,
+       select "wangemu Properties..."
+
+   Now is the time to point the compiler to the location where you
+   built the wxWidgets libs.
+
+   7f) Under Configuration Properties, expand the "C/C++" control.
+       Select the "General" category. Here is what I have for the
+       first line item, "Additional Include Directories":
+
+        debug build:
+            $(WXWIN)\include;$(WXWIN)\lib\vc_lib\mswud
+        release build:
+            $(WXWIN)\include;$(WXWIN)\lib\vc_lib\msw
+
+   7f) Still under the C/C++ control, select the "Preprocessor" group.
+       The first line item is "Preprocessor Definitions". Here is what
+       I have; if you are using the .vcproj file supplied with the emulator
+       source this should already be configured properly:
+
+       debug build:
+         WIN32;_DEBUG;__WXMSW__;__WXDEBUG__;_WINDOWS;_CRT_SECURE_NO_WARNINGS=1
+       release build:
+         WIN32;__WXMSW__;_WINDOWS;_CRT_SECURE_NO_WARNINGS=1
+
+   7g) Still under the C/C++ control, select the "Code Generation" group.
+       The sixth line item is "Runtime Library". Here is what I have;
+       if you are using the .vcproj file supplied with the emulator source
+       this should already be configured properly:
+
+        debug build:
+            Multi-threaded Debug DLL (/MDd)
+        release build:
+            Multi-threaded DLL (/MD)
+
+   7h) Switch to the "Linker" tree control item. The ninth line item is
+       "Additional Library Directories". Here is what I have (same for both
+       debug and release builds):
+
+            $(WXWIN)\lib\vc_lib;$(WXWIN)\include
+
+   7i) Switch to the "Resources" tree control item. The fourth line item is:
+
+        debug build:
+            $(WXWIN)\include;$(WXWIN)\lib\vc_lib\mswd;.
+        release build:
+            $(WXWIN)\include;$(WXWIN)\lib\vc_lib\msw;.
+
+   OK, that should be it for configuration.
+
+8) Build the emulator
+
+   8a) After closing the properties box, go to the top level menu, make sure
+      that the project is set to build the Debug version. There is a control
+      on the toolbar to select it.
+
+   8b) Select the top level menu Build -> Build Solution  (or Ctrl+Shift+B)
+       It should grind away for one or two minutes and not produce any
+       warnings or errors. If you do ... uh, I don't have any good advice.
+       I've tried to make it clear here, but the entire chain of things
+       that must be configured properly affords plenty of opportunities to
+       get it wrong.
+
+9) Run the emulator
+
+   Select Debug -> Start Debugging (or hit F5) to run the emulator.
+
+---- Bonus Tools ----
+
+MSVC comes with some C++ validation tools, but it helps to run other
+code linting tools; each applies different code quality heuristics and
+find things none of the other find ... while at the same time all produce
+many false positives that need code changes to shut them up or can simply
+be ignored.
+
+10a) optionally install clang power tools
+
+   This allows running clang code linting tools; in fact is is even possible
+   to compile the app using clang++, but I haven't done so. I use this only
+   for linting the code. It is a commercial product, but is free for personal,
+   non-commercial hobby activity. An account must be created there to use it.
+
+   https://marketplace.visualstudio.com/items?itemName=caphyon.ClangPowerTools
+
+   I configured the clang power tools command line to include "--std=c++14",
+   as that is my intended level of C++ modernization, and don't want to be
+   told about things to do to take advantage of C++17 (or later) features.
+
+10b) optionally install cppcheck
+
+   This is the source of cppcheck:
+
+   http://cppcheck.sourceforge.net/
+
+   This site has a plugin to integrate cppcheck with MSVS, although it isn't
+   strictly necessary. cppcheck can run standalone too:
+
+   https://github.com/VioletGiraffe/cppcheck-vs-addin
+
+10c) optionally install Dr. Memory
+
+   Dr. Memory is a bounds checking tool. The application to be debugged is
+   instrumented and various memory access errors (eg, accessing an array
+   out of bounds, or using a malloc'd block of memory after it has been
+   free'd). The application runs at a fraction of its normal rate, so be
+   patient.
+
+   http://www.drmemory.org/
+
+   There is a file named "dr_memory.bat" in the wangemu directory.
+   Run it to run the emulator under the watchful eye of Dr. Memory.
+   Note that it is expected that there are some warnings associated
+   with starting/closing the application, as the wxwidgets library
+   does some unholy things behind the scenes.
+
+--------------------------------------------------------------
+-------------------------- OSX Port --------------------------
+--------------------------------------------------------------
+
+I'm not a Mac person. I bought a Mac Mini for the sole purpose of porting
+the emulator to OSX. 98% of all development on is is done on a Windows 7
+machine. As I am a neophyte, I'm barely qualified to give advice on how
+to build wxWidgets and this emulator on OSX. But, I must try.
+
+It might not make any difference, but just in case, I'm developing on a
+mac mini, a late 2014 model, running OSX 10.14.2.
+
+The first place to start is here:
+
+    http://wiki.wxwidgets.org/Guides_%26_Tutorials
+
+and specifically, this page:
+
+    http://wiki.wxwidgets.org/Getting_started_on_OS_X
+
+1) Set up a modern C++ compiler
+
+   In the previous release of this emulator, I built it with xcode, the
+   Apple IDE. However, it was painful to use, and from everything I've
+   read, it has gotten worse. It is a 12GB monster now. So this time
+   I've done everything through the command line.
+
+   From a Terminal, type the following:
+        xcode-select --install
+
+   If the tools aren't installed, it will ask you if you want to download
+   them. Say yes. It is a small download (as compared to xcode), about
+   150MB, and takes only a minute to install.
+
+2) Get the wxWidgets library source code
+
+   Version 3.0 of WangEmu was build using wx version 3.1.3. If you download
+   a later version of wxWidgets, there may be issues, as the wx developers
+   do tend to make a few backward-incompatible changes each release.
+
+   Go to http://www.wxwidgets.org/downloads/ and download the installer
+   for OSX.
+
+3) Unpack the wxWidgets source code
+
+   The file you downloaded is located in your downloads directory and is
+   called something like ~/Downloads/wxWidgets-3.1.3.tar.bz2.
+
+   Double click to unpack it into ~/Downloads/wxWidgets-3.1.3 (or whichever
+   directory you downloaded it to). You can move this directory anywhere
+   you please, but I put it in ~/src and rename it such that the full path is
+   ~/src/wx-3.1.3/.
+
+4) Build the wxWidgets library
+
+   To automate things, I created two scripts, one to build a debug version
+   of the wxWidgets libs, and one to build the release versions. Before
+   wx 3.0, it was possible and useful to build a release and a debug version
+   of the wx libraries and have them both resident. During compile time you
+   could select which version to link to the emulator. But since 3.0 things
+   have changed and they discourage that. As a result, I build the debug
+   version, develop and debug my app, and just before releasing the emulator,
+   I delete the libs and rebuild with optimization turned on.
+
+   Here are two scripts to build the library (adjust for your own situation):
+
+        [14] cd ~/src/wx-3.1.3
+        [15] cat > build-debug-script
+        #!/usr/bin/env tcsh
+        if (-e debug) then
+            echo "debug already exists"
+            exit 1
+        endif
+        mkdir debug
+        cd debug
+        ../configure \
+            --disable-shared        \
+            --enable-stl            \
+            --with-cxx=14           \
+            --with-macos-sdk=/Library/Developer/CommandLineTools/SDKs/MacOSX10.14.sdk \
+            --enable-debug          \
+            --enable-debug_gdb      \
+            --disable-optimise      \
+            --prefix=$HOME/lib      \
+            && make -j4 install
+
+        [16] ./build-debug-script |& tee build-debug.log
+
+   or for the optimized build:
+
+        [17] cat > build-release-script
+        #!/usr/bin/env tcsh
+        if (-e release) then
+            echo "release already exists"
+            exit 1
+        endif
+        mkdir release
+        cd release
+        ../configure \
+            --disable-shared        \
+            --enable-stl            \
+            --with-cxx=14           \
+            --with-macos-sdk=/Library/Developer/CommandLineTools/SDKs/MacOSX10.14.sdk \
+            --disable-debug         \
+            --enable-optimise       \
+            --prefix=$HOME/lib      \
+            && make -j4 install
+
+        [18] ./build-release-script |& tee build-release.log
+
+   The build products will be produced in the debug or release subdirectories,
+   and the install step will copy them to ~/bin and ~/lib  (that is what
+   the --prefix argument specifies).
+
+   With luck, these complete without errors. If they don't, sorry I can't
+   help. I'd suggest googling and then going onto the wxWidgets forum.
+
+   It is good to build one of the wx demo or sample applications to prove
+   that the libraries built properly.
+
+        [19] cd debug/demos/bombs
+        [20] make -f makefile.unx
+        [21] ./bombs
+
+   Again, if that builds and runs, you are golden. If it fails to build
+   or doesn't run, the same advice as before: go to the wx forum for help.
+
+5) Set up the build tree
+
+   When you install the Wang 2200 emulator, there is a folder called
+   "src". This contains the source files for building the emulator, and
+   a makefile for building it from scratch.
+
+   mkdir ~/wangemu
+   put all the files under this directory.  That is,
+
+        ls -l ~/wangemu/
+
+   should show a number of folders and files including the following
+   (not all folders and files shown)
+
+        disks/
+        scripts/
+        src/
+        build.txt
+        LICENSE
+        makefile
+        README.md
+
+6) Build the emulator
+
+   cd into ~/wangemu/src.  Then type "make" and, with a bit of luck,
+   lots of build commands and output will appear in your terminal.
+   After five minutes or less, you should have a binary ready to run.
+   Type
+        ./wangemu
+
+   and the emulator should begin running.
